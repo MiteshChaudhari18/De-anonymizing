@@ -611,16 +611,40 @@ def display_results():
     st.markdown("---")
     st.markdown("#### 📋 Detailed Results")
     
-    # Create enhanced results dataframe
+    # Create enhanced results dataframe with geolocation info
     results_data = []
     for result in st.session_state.analysis_results:
+        # Extract geolocation information
+        location_info = "Unknown"
+        ip_info = "Not resolved"
+        
+        if 'location_summary' in result and result['location_summary']:
+            loc_summary = result['location_summary']
+            most_likely = loc_summary.get('most_likely_location', {})
+            if most_likely:
+                country = most_likely.get('country', 'Unknown')
+                city = most_likely.get('city', '')
+                location_info = f"{city}, {country}" if city else country
+        
+        if 'geolocation_analysis' in result:
+            geo_analysis = result['geolocation_analysis']
+            resolved_ips = geo_analysis.get('resolved_ips', [])
+            exit_nodes = geo_analysis.get('exit_nodes_used', [])
+            
+            if resolved_ips:
+                ip_info = f"{len(resolved_ips)} IPs resolved"
+            elif exit_nodes:
+                ip_info = f"{len(exit_nodes)} exit nodes"
+            else:
+                ip_info = "Tor-only (no IP leaks)"
+        
         row = {
             'URL': result.get('url', 'Unknown'),
-            'Timestamp': result.get('timestamp', 'Unknown'),
             'Status': '✅ Success' if 'error' not in result else '❌ Error',
+            'Location': location_info,
+            'IP Status': ip_info,
             'Risk Level': result.get('risk_level', 'Unknown'),
             'Entities Found': len(result.get('entities', [])) if 'entities' in result else 0,
-            'OSINT Sources': len(result.get('osint_sources', [])) if 'osint_sources' in result else 0,
             'Analysis Score': f"{result.get('analysis_score', 0)}%" if 'analysis_score' in result else 'N/A'
         }
         results_data.append(row)
@@ -681,6 +705,13 @@ def display_detailed_result(result: Dict[str, Any]):
         for source in result['osint_sources']:
             with st.expander(f"Source: {source.get('name', 'Unknown')}"):
                 st.json(source)
+    
+    # Geolocation Analysis
+    if 'geolocation_analysis' in result:
+        display_geolocation_details(result['geolocation_analysis'])
+    
+    if 'location_summary' in result:
+        display_location_summary(result['location_summary'])
     
     # Metadata
     if 'metadata' in result and result['metadata']:
@@ -845,6 +876,130 @@ def display_help():
     ## Disclaimer
     This tool is for educational and research purposes only. Users are responsible for ensuring their use complies with applicable laws and regulations.
     """)
+
+def display_geolocation_details(geo_analysis: Dict[str, Any]):
+    """Display detailed geolocation analysis results"""
+    st.markdown("---")
+    st.markdown("### 🌍 IP Address & Geolocation Analysis")
+    
+    # Resolution attempts
+    if 'resolution_attempts' in geo_analysis:
+        st.markdown("#### 🔍 IP Resolution Attempts")
+        for attempt in geo_analysis['resolution_attempts']:
+            method = attempt.get('method', 'Unknown')
+            success = attempt.get('success', False)
+            status_icon = "✅" if success else "❌"
+            
+            with st.expander(f"{status_icon} {method.replace('_', ' ').title()}"):
+                st.json(attempt)
+    
+    # Exit nodes used
+    if 'exit_nodes_used' in geo_analysis and geo_analysis['exit_nodes_used']:
+        st.markdown("#### 🚪 Tor Exit Nodes Detected")
+        exit_nodes_df = pd.DataFrame(geo_analysis['exit_nodes_used'])
+        st.dataframe(exit_nodes_df, use_container_width=True)
+    
+    # Resolved IPs
+    if 'resolved_ips' in geo_analysis and geo_analysis['resolved_ips']:
+        st.markdown("#### 📍 Resolved IP Addresses")
+        for ip in geo_analysis['resolved_ips']:
+            st.code(ip)
+    
+    # Geolocation data
+    if 'geolocation_data' in geo_analysis and geo_analysis['geolocation_data']:
+        st.markdown("#### 🗺️ Geolocation Details")
+        for i, geo_data in enumerate(geo_analysis['geolocation_data']):
+            with st.expander(f"🌐 Location Data {i+1} - {geo_data.get('ip_address', 'Unknown IP')}"):
+                location = geo_data.get('location_data', {})
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Geographic Information**")
+                    st.write(f"🏳️ Country: {location.get('country', 'Unknown')}")
+                    st.write(f"🏙️ City: {location.get('city', 'Unknown')}")
+                    st.write(f"📍 Region: {location.get('region', 'Unknown')}")
+                    st.write(f"📮 ZIP Code: {location.get('zip_code', 'Unknown')}")
+                    st.write(f"🌍 Coordinates: {location.get('latitude', 0)}, {location.get('longitude', 0)}")
+                
+                with col2:
+                    st.markdown("**Network Information**")
+                    st.write(f"🏢 ISP: {location.get('isp', 'Unknown')}")
+                    st.write(f"🌐 Organization: {location.get('org', 'Unknown')}")
+                    st.write(f"🔢 AS Number: {location.get('as_number', 'Unknown')}")
+                    st.write(f"🕐 Timezone: {location.get('timezone', 'Unknown')}")
+                    st.write(f"📊 Provider: {geo_data.get('provider', 'Unknown')}")
+
+def display_location_summary(location_summary: Dict[str, Any]):
+    """Display location summary with enhanced styling"""
+    st.markdown("---")
+    st.markdown("### 📊 Location Intelligence Summary")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+        st.metric("🎯 IPs Analyzed", location_summary.get('total_ips_analyzed', 0))
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col2:
+        countries = location_summary.get('countries_detected', [])
+        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+        st.metric("🌍 Countries", len(countries))
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col3:
+        confidence = location_summary.get('confidence_score', 0)
+        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+        st.metric("🎯 Confidence", f"{confidence:.0f}%")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Most likely location
+    most_likely = location_summary.get('most_likely_location')
+    if most_likely:
+        st.markdown("#### 📍 Most Likely Location")
+        
+        country = most_likely.get('country', 'Unknown')
+        city = most_likely.get('city', '')
+        confidence_level = most_likely.get('confidence', 'unknown')
+        
+        location_text = f"{city}, {country}" if city else country
+        confidence_class = f"risk-{confidence_level.lower()}" if confidence_level.lower() in ['low', 'medium', 'high'] else "risk-medium"
+        
+        st.markdown(f"""
+        <div style="text-align: center; padding: 1rem; background: rgba(0, 212, 170, 0.1); border-radius: 10px; margin: 1rem 0;">
+            <h3 style="margin: 0;">🗺️ {location_text}</h3>
+            <span class="{confidence_class}">Confidence: {confidence_level.title()}</span>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Detected entities
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        countries = location_summary.get('countries_detected', [])
+        if countries:
+            st.markdown("##### 🌍 Countries Detected")
+            for country in countries:
+                st.markdown(f"🏳️ {country}")
+    
+    with col2:
+        isps = location_summary.get('isps_detected', [])
+        if isps:
+            st.markdown("##### 🏢 ISPs Detected")
+            for isp in isps[:5]:  # Show top 5
+                st.markdown(f"🌐 {isp}")
+    
+    # Security indicators
+    hosting_detected = location_summary.get('hosting_detected', [])
+    proxy_detected = location_summary.get('proxy_detected', [])
+    
+    if hosting_detected or proxy_detected:
+        st.markdown("##### ⚠️ Security Indicators")
+        if hosting_detected:
+            st.warning(f"🏢 Hosting services detected: {len(hosting_detected)} IPs")
+        if proxy_detected:
+            st.warning(f"🔒 Proxy services detected: {len(proxy_detected)} IPs")
 
 if __name__ == "__main__":
     main()

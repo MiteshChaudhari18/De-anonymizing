@@ -11,12 +11,14 @@ import socket
 from datetime import datetime
 
 from .tor_connector import TorConnector
+from .geolocation import GeolocationAnalyzer
 
 class TorAnalyzer:
     """Core analysis tool for Tor onion sites"""
     
     def __init__(self):
         self.tor_connector = TorConnector()
+        self.geolocation_analyzer = GeolocationAnalyzer()
         self.session = None
         self.timeout = 30
         
@@ -42,6 +44,16 @@ class TorAnalyzer:
             
             # Technical fingerprinting
             result.update(self._analyze_technical_details(url))
+            
+            # IP and Geolocation analysis
+            geo_analysis = self.geolocation_analyzer.resolve_onion_to_ip(url)
+            result['geolocation_analysis'] = geo_analysis
+            
+            # Generate location summary
+            if geo_analysis.get('geolocation_data'):
+                result['location_summary'] = self.geolocation_analyzer.generate_location_summary(
+                    geo_analysis['geolocation_data']
+                )
             
             # Risk assessment
             result['risk_level'] = self._assess_risk(result)
